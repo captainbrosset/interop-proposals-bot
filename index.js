@@ -6,7 +6,7 @@ const ISSUE_LABEL = "focus-area-proposal";
 const OWNER = "web-platform-tests";
 const REPO = "interop";
 
-const octokit = new Octokit({ auth: process.env.TOKEN });
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 async function listProposalIssues() {
   const response = await octokit.request(
@@ -16,7 +16,7 @@ async function listProposalIssues() {
   return response.data;
 }
 
-function extractUrlsFromBody(body) {
+function extractSpecUrlsFromBody(body) {
   const urls = body.match(/https?:\/\/[^)\s]+/g) || [];
 
   return urls
@@ -57,7 +57,7 @@ function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
 }
 
 function findFeaturesInIssue(issue) {
-  const urlsInBodyOfIssue = extractUrlsFromBody(issue.body);
+  const urlsInBodyOfIssue = extractSpecUrlsFromBody(issue.body);
   const features = identifyFeaturesFromSpecUrls(urlsInBodyOfIssue);
   return features;
 }

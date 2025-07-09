@@ -1,0 +1,24 @@
+name: Identify Web Features in Issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      # Get the new issue.
+      # Run the index.js script to identify web features in the issue body.
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+      - name: Install dependencies
+        run: npm install
+      - name: Run script
+        run: node index.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
