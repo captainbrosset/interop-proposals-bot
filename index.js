@@ -1,18 +1,25 @@
 import "dotenv/config";
 import { Octokit, App } from "octokit";
 import { features } from "web-features";
+import yargs from "yargs";
 
-const ISSUE_LABEL = "focus-area-proposal";
-const OWNER = "web-platform-tests";
-const REPO = "interop";
+const argv = yargs(process.argv)
+  .option("number", {
+    alias: "n",
+    type: "number",
+    default: false,
+    describe: "The issue number to process",
+  })
+  .option("repo", {
+    alias: "r",
+    type: "string",
+    describe: "The owner and repository name. For example: web-platform-tests/interop",
+  }).argv;
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-async function listProposalIssues() {
-  const response = await octokit.request(
-    `GET /repos/${OWNER}/${REPO}/issues?labels=${ISSUE_LABEL}&is=issue&state=closed`,
-  );
-
+async function getReferencedIssue() {
+  const response = await octokit.request(`GET /repos/${argv.repo}/issues/${argv.number}`,);
   return response.data;
 }
 
@@ -23,15 +30,15 @@ function extractSpecUrlsFromBody(body) {
     .filter(url => {
       // Filter out known non-spec URLs.
       return !url.includes("bugzilla") &&
-           !url.includes("github.com") &&
-           !url.includes("webkit.org") &&
-           !url.includes("developer.mozilla.org") &&
-           !url.includes("developer.chrome.com") &&
-           !url.includes("wpt.fyi") &&
-           !url.includes("css-tricks") &&
-           !url.includes("webstatus.dev") &&
-           !url.includes("learn.microsoft.com") &&
-           !url.includes("chromium.org");
+        !url.includes("github.com") &&
+        !url.includes("webkit.org") &&
+        !url.includes("developer.mozilla.org") &&
+        !url.includes("developer.chrome.com") &&
+        !url.includes("wpt.fyi") &&
+        !url.includes("css-tricks") &&
+        !url.includes("webstatus.dev") &&
+        !url.includes("learn.microsoft.com") &&
+        !url.includes("chromium.org");
     }).map(url => {
       // Separate the # from the URL if it exists.
       return [url, url.split("#")[0]];
@@ -41,7 +48,7 @@ function extractSpecUrlsFromBody(body) {
 function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
   const matchingFeatures = [];
 
-  for(const [candidateUrl, candidateUrlNoAnchor] of specUrlsInIssue) {
+  for (const [candidateUrl, candidateUrlNoAnchor] of specUrlsInIssue) {
     for (const id in features) {
       const feature = features[id];
       feature.id = id;
@@ -72,22 +79,19 @@ async function getFeatureAugmentedData(feature) {
 }
 
 async function main() {
-  const issues = await listProposalIssues();
+  const issue = await getReferencedIssue();
 
-  for (const issue of issues) {
-    console.log("-----");
-    console.log(`Issue #${issue.number}: ${issue.title}`);
-    const features = findFeaturesInIssue(issue);
+  console.log(`Process issue #${issue.number}: ${issue.title}`);
+  const features = findFeaturesInIssue(issue);
 
-    if (features.length !== 0) {
-      console.log(`  - Found ${features.length} matching feature(s): ${features.map(f => f.id).join(", ")}`);
-      for (const feature of features) {
-        try {
-          const featureData = await getFeatureAugmentedData(feature);
-          console.log(featureData);
-        } catch (error) {
-          console.error(`    - Error fetching data for feature ${feature.id}:`, error);
-        }
+  if (features.length !== 0) {
+    console.log(`  - Found ${features.length} matching feature(s): ${features.map(f => f.id).join(", ")}`);
+    for (const feature of features) {
+      try {
+        const featureData = await getFeatureAugmentedData(feature);
+        console.log(featureData);
+      } catch (error) {
+        console.error(`    - Error fetching data for feature ${feature.id}:`, error);
       }
     }
   }
