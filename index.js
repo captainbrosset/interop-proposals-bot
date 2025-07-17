@@ -64,16 +64,14 @@ function extractExplorerUrlsFromBody(body) {
 
 // Given a list of likely spec URLs, identify which web-features they match.
 function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
-  const matchingFeatures = [];
+  const matchingFeatures = new Map();
 
   for (const [candidateUrl, candidateUrlNoAnchor] of specUrlsInIssue) {
     for (const id in features) {
       const feature = features[id];
-      feature.id = id;
       const featureSpecs = Array.isArray(feature.spec) ? feature.spec : [feature.spec];
-
       if (featureSpecs.some(spec => spec === candidateUrl || spec === candidateUrlNoAnchor)) {
-        matchingFeatures.push(feature);
+        matchingFeatures.set(id, feature);
       }
     }
   }
@@ -83,17 +81,16 @@ function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
 
 // Given a list of likely explorer URLs, identify which web-features they match.
 function identifyFeaturesFromExplorerUrls(explorerUrlsInIssue) {
-  const matchingFeatures = [];
+  const matchingFeatures = new Map();
 
   for (const url of explorerUrlsInIssue) {
     // Extract the feature ID from the URL.
     const match = url.match(/features\/([a-z0-9-]+)/);
     if (match && match[1]) {
-      const featureId = match[1];
-      const feature = features[featureId];
+      const id = match[1];
+      const feature = features[id];
       if (feature) {
-        feature.id = featureId; // Add the ID to the feature object.
-        matchingFeatures.push(feature);
+        matchingFeatures.set(id, feature);
       }
     }
   }
@@ -105,17 +102,21 @@ function identifyFeaturesFromExplorerUrls(explorerUrlsInIssue) {
 // For now, we only look for URLs that match the web-features specifications.
 // TODO: find web-features IDs, but also try to match on other URLs too (WPT labels, MDN URLs, vendor positions, etc.)
 function findFeaturesInIssue(issue) {
+  // Find features based on spec URLs.
   const specUrls = extractSpecUrlsFromBody(issue.body);
   console.log(`Found ${specUrls.length} likely spec URL(s) in issue body:`);
   console.log(specUrls.map(s => `- ${s[0]}`).join("\n"));
   const featuresBasedOnSpecUrls = identifyFeaturesFromSpecUrls(specUrls);
 
+  // Find features based on web-features-explorer URLs.
   const explorerUrls = extractExplorerUrlsFromBody(issue.body);
   console.log(`Found ${explorerUrls.length} explorer URL(s) in issue body:`);
   console.log(explorerUrls.map(s => `- ${s}`).join("\n"));
   const featuresBasedOnExplorerUrls = identifyFeaturesFromExplorerUrls(explorerUrls);
 
-  return [...featuresBasedOnSpecUrls, ...featuresBasedOnExplorerUrls];
+  // Combine the maps, de-duping features by ID.
+  const dedupedFeatures = new Map([...featuresBasedOnSpecUrls, ...featuresBasedOnExplorerUrls]);
+  return [...dedupedFeatures.values()];
 }
 
 // Given a feature id, retrieve the feature's data.
