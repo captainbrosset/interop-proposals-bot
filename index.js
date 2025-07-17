@@ -5,7 +5,7 @@ import yargs from "yargs";
 
 // This is used as a hidden HTML comment when posting comments to GitHub issues.
 // This way, we can retrieve the comment later, and update it if needed.
-const HIDDEN_COMMENT_IN_ISSUE = "<!-- interop-proposals-bot web-features update -->"
+const HIDDEN_COMMENT_IN_ISSUE = "<!-- interop-proposals-bot web-features update -->";
 const GITHUB_API_VERSION = "2022-11-28";
 
 const argv = yargs(process.argv)
