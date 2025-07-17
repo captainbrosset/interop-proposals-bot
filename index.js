@@ -255,7 +255,7 @@ async function main() {
   // Add the hidden comment to find this comment again later.
   content += `\n${HIDDEN_COMMENT_IN_ISSUE}`;
 
-  await postOrUpdateComment(issue.number, markdown);
+  await postOrUpdateComment(issue.number, content);
 }
 
 main();
