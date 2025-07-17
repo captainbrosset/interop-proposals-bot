@@ -2,7 +2,7 @@ name: Identify Web Features in Issues
 
 on:
   issues:
-    types: [opened]
+    types: [opened, edited]
 
 jobs:
   run-script:

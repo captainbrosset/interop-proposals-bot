@@ -3,6 +3,11 @@ import { Octokit, App } from "octokit";
 import { features } from "web-features";
 import yargs from "yargs";
 
+// This is used as a hidden HTML comment when posting comments to GitHub issues.
+// This way, we can retrieve the comment later, and update it if needed.
+const HIDDEN_COMMENT_IN_ISSUE = "<!-- interop-proposals-bot web-features update -->"
+const GITHUB_API_VERSION = "2022-11-28";
+
 const argv = yargs(process.argv)
   .option("number", {
     alias: "n",
@@ -23,6 +28,7 @@ async function getReferencedIssue() {
   return response.data;
 }
 
+// Extract URLs from the issue body that are likely to be specifications.
 function extractSpecUrlsFromBody(body) {
   const urls = body.match(/https?:\/\/[^)\s]+/g) || [];
 
@@ -45,6 +51,7 @@ function extractSpecUrlsFromBody(body) {
     });
 }
 
+// Given a list of URLs, identify which web-features they match.
 function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
   const matchingFeatures = [];
 
@@ -63,6 +70,9 @@ function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
   return matchingFeatures;
 }
 
+// Given a GitHub issue, find the web-features that are referenced in the issue body.
+// For now, we only look for URLs that match the web-features specifications.
+// TODO: find web-features IDs, but also try to match on other URLs too (WPT labels, MDN URLs, vendor positions, etc.)
 function findFeaturesInIssue(issue) {
   const urlsInBodyOfIssue = extractSpecUrlsFromBody(issue.body);
   console.log(`Found ${urlsInBodyOfIssue.length} URL(s) in issue body, which may be specification(s):`);
@@ -72,6 +82,9 @@ function findFeaturesInIssue(issue) {
   return features;
 }
 
+// Given a feature id, retrieve the feature's data.
+// We use the web-features-explorer's JSON files to get the full data, which includes both
+// the data that comes from the web-features project and the additional data that the explorer augments it with.
 async function getFeatureAugmentedData(feature) {
   console.log(`Getting data for feature ${feature.id}`);
 
@@ -157,6 +170,7 @@ function printWPTLink(feature) {
   return `* **WPT tests:** [wpt.fyi](https://wpt.fyi/results/?q=feature:${feature.id})\n`;
 }
 
+// Generate the markdown content for the given feature.
 function prepareComment(feature) {
   let str = `The feature [${feature.name}](https://web-platform-dx.github.io/web-features-explorer/features/${feature.id}/) (from the [web-features project](https://github.com/web-platform-dx/web-features/)) was identified from the specification URLs you provided in the first comment.\n\n`;
   str += `Below is more information about the feature, which might help motivate your focus area proposal.\n\n`;
@@ -173,18 +187,44 @@ function prepareComment(feature) {
   str += printWPTLink(feature);
   str += `\nFor more information, see the [web-features explorer](https://web-platform-dx.github.io/web-features-explorer/features/${feature.id}/).`;
 
+  // Add the hidden comment to find this comment again later.
+  str += `\n${HIDDEN_COMMENT_IN_ISSUE}`;
+
   return str;
 }
 
-async function postNewComment(issueNumber, markdown) {
-  await octokit.request(`POST /repos/${argv.repo}/issues/${issueNumber}/comments`, {
-    body: markdown,
+// Post a new comment with the given markdown content or update an existing comment if it already exists.
+async function postOrUpdateComment(issueNumber, markdown) {
+  // Retrieve existing comments to check if we already posted a comment.
+  const commentsResponse = await octokit.request(`GET /repos/${argv.repo}/issues/${issueNumber}/comments`, {
     headers: {
-      'X-GitHub-Api-Version': '2022-11-28'
+      "X-GitHub-Api-Version": GITHUB_API_VERSION
     }
   });
+  const existingComment = commentsResponse.data.find(comment => comment.body.includes(HIDDEN_COMMENT_IN_ISSUE));
+
+  if (existingComment) {
+    // The bot already posted a comment. Update it.
+    console.log(`Updating existing comment #${existingComment.id}...`);
+    await octokit.request(`PATCH /repos/${argv.repo}/issues/comments/${existingComment.id}`, {
+      body: markdown,
+      headers: {
+        "X-GitHub-Api-Version": GITHUB_API_VERSION
+      }
+    });
+  } else {
+    // Post a new comment.
+    console.log(`Posting a new comment...`);
+    await octokit.request(`POST /repos/${argv.repo}/issues/${issueNumber}/comments`, {
+      body: markdown,
+      headers: {
+        "X-GitHub-Api-Version": GITHUB_API_VERSION
+      }
+    });
+  }
 }
 
+// The main entry point to the script.
 async function main() {
   const issue = await getReferencedIssue();
 
@@ -209,7 +249,7 @@ async function main() {
   const featureData = await getFeatureAugmentedData(feature);
   const markdown = prepareComment(featureData);
 
-  await postNewComment(issue.number, markdown);
+  await postOrUpdateComment(issue.number, markdown);
 }
 
 main();
