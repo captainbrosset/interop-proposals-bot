@@ -23,7 +23,7 @@ const argv = yargs(process.argv)
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-function escapedFeatureName(feature) {
+function escapeFeatureName(feature) {
   // Escape the feature name for use in HTML.
   return feature.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -33,11 +33,13 @@ async function getReferencedIssue() {
   return response.data;
 }
 
-// Extract URLs from the issue body that are likely to be specifications.
-function extractSpecUrlsFromBody(body) {
-  const urls = body.match(/https?:\/\/[^)\s]+/g) || [];
+// Identify web-features based on spec URLs in the issue body.
+function gatherFeaturesFromSpecUrls(issueBody, gatheredFeatures) {
+  // Find URLs in the issue body.
+  const urls = issueBody.match(/https?:\/\/[^)\s]+/g) || [];
 
-  return urls
+  // Filter out known non-spec URLs.
+  const specUrls = urls
     .filter(url => {
       // Filter out known non-spec URLs.
       return !url.includes("bugzilla") &&
@@ -54,69 +56,78 @@ function extractSpecUrlsFromBody(body) {
       // Separate the # from the URL if it exists.
       return [url, url.split("#")[0]];
     });
-}
 
-// Extract the URLs from the issue body that point to the web-features-explorer.
-function extractExplorerUrlsFromBody(body) {
-  const urls = body.match(/https?:\/\/web-platform-dx.github.io\/web-features-explorer\/features\/[a-z0-9-]+/g) || [];
-  return urls.map(url => url.split("#")[0]); // Remove any anchors from the URLs.
-}
-
-// Given a list of likely spec URLs, identify which web-features they match.
-function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
-  const matchingFeatures = new Map();
-
-  for (const [candidateUrl, candidateUrlNoAnchor] of specUrlsInIssue) {
+  // Iterate over web features to find spec URL matches.
+  for (const [candidateUrl, candidateUrlNoAnchor] of specUrls) {
     for (const id in features) {
       const feature = features[id];
       const featureSpecs = Array.isArray(feature.spec) ? feature.spec : [feature.spec];
       if (featureSpecs.some(spec => spec === candidateUrl || spec === candidateUrlNoAnchor)) {
-        matchingFeatures.set(id, feature);
+        gatheredFeatures[id] = feature;
       }
     }
   }
-
-  return matchingFeatures;
 }
 
-// Given a list of likely explorer URLs, identify which web-features they match.
-function identifyFeaturesFromExplorerUrls(explorerUrlsInIssue) {
-  const matchingFeatures = new Map();
+// Identify web-features based on explorer URLs in the issue body.
+function gatherFeaturesFromExplorerUrls(issueBody, gatheredFeatures) {
+  // https://web-platform-dx.github.io/web-features-explorer/features/<feature-id>
+  let urls = issueBody.match(/https?:\/\/web-platform-dx.github.io\/web-features-explorer\/features\/[a-z0-9-]+/g) || [];
+  urls = urls.map(url => url.split("#")[0]);
 
-  for (const url of explorerUrlsInIssue) {
+  for (const url of urls) {
     // Extract the feature ID from the URL.
     const match = url.match(/features\/([a-z0-9-]+)/);
     if (match && match[1]) {
       const id = match[1];
       const feature = features[id];
       if (feature) {
-        matchingFeatures.set(id, feature);
+        gatheredFeatures[id] = feature;
       }
     }
   }
+}
 
-  return matchingFeatures;
+// Identify web-features based on WPT URLs in the issue body.
+function gatherFeaturesFromWPTUrls(issueBody, gatheredFeatures) {
+  // https://wpt.fyi/results/?q=feature:<feature-id>
+  let urls = issueBody.match(/https?:\/\/wpt\.fyi\/results\/\?q=feature:[a-z0-9-]+/g) || [];
+  urls = urls.map(url => url.split("#")[0]);
+
+  for (const url of urls) {
+    // Extract the feature ID from the URL.
+    const match = url.match(/feature:([a-z0-9-]+)/);
+    if (match && match[1]) {
+      const id = match[1];
+      const feature = features[id];
+      if (feature) {
+        gatheredFeatures[id] = feature;
+      }
+    }
+  }
 }
 
 // Given a GitHub issue, find the web-features that are referenced in the issue body.
 // For now, we only look for URLs that match the web-features specifications.
-// TODO: find web-features IDs, but also try to match on other URLs too (WPT labels, MDN URLs, vendor positions, etc.)
 function findFeaturesInIssue(issue) {
-  // Find features based on spec URLs.
-  const specUrls = extractSpecUrlsFromBody(issue.body);
-  console.log(`Found ${specUrls.length} likely spec URL(s) in issue body:`);
-  console.log(specUrls.map(s => `- ${s[0]}`).join("\n"));
-  const featuresBasedOnSpecUrls = identifyFeaturesFromSpecUrls(specUrls);
+  const features = {};
+  
+  gatherFeaturesFromSpecUrls(issue.body, features);
+  gatherFeaturesFromExplorerUrls(issue.body, features);
+  gatherFeaturesFromWPTUrls(issue.body, features);
+  // TODO: Match on other things too:
+  // - web-features ID in the body of the issue, which might be there since the issue template asks for it.
+  // - MDN URLs
+  // - vendor positions
+  // - etc.
+  // Maybe investigate a weighted system to prioritize features based on the number of matches.
 
-  // Find features based on web-features-explorer URLs.
-  const explorerUrls = extractExplorerUrlsFromBody(issue.body);
-  console.log(`Found ${explorerUrls.length} explorer URL(s) in issue body:`);
-  console.log(explorerUrls.map(s => `- ${s}`).join("\n"));
-  const featuresBasedOnExplorerUrls = identifyFeaturesFromExplorerUrls(explorerUrls);
-
-  // Combine the maps, de-duping features by ID.
-  const dedupedFeatures = new Map([...featuresBasedOnSpecUrls, ...featuresBasedOnExplorerUrls]);
-  return [...dedupedFeatures.values()];
+  return [...Object.entries(features)].map(([id, feature]) => {
+    return {
+      id,
+      ...feature
+    };
+  });
 }
 
 // Given a feature id, retrieve the feature's data.
@@ -209,9 +220,9 @@ function printWPTLink(feature) {
 
 // Generate the markdown content for the given feature.
 function getMarkdownContentForFeature(feature) {
-  let str = `### Feature **${escapedFeatureName(feature)}**\n\n`;
+  let str = `### Feature **${escapeFeatureName(feature)}**\n\n`;
   str += `* **ID:** ${feature.id}\n`;
-  str += `* **Name:** ${escapedFeatureName(feature)}\n`;
+  str += `* **Name:** ${escapeFeatureName(feature)}\n`;
   str += `* **Description:** ${feature.description_html}\n`;
   str += `* **Baseline status:** ${printBaselineStatus(feature)}\n`;
   str += printDocs(feature);
@@ -262,26 +273,26 @@ async function main() {
 
   console.log(`Processing issue #${issue.number}: "${issue.title}"`);
   const features = findFeaturesInIssue(issue);
+  const augmentedFeatures = await Promise.all(features.map(feature => getFeatureAugmentedData(feature)));
 
   if (features.length === 0) {
     console.log("Could not find any matching features the issue body.");
     return;
   }
 
-  console.log(`Found ${features.length} matching feature(s) based on specification URLs:`);
-  console.log(features.map(f => `- ${f.id}`).join("\n"));
+  console.log(`Found ${augmentedFeatures.length} matching feature(s):`);
+  console.log(augmentedFeatures.map(f => `- ${f.id}`).join("\n"));
 
   let content = "_This comment was automatically generated based on the information you provided. Please don't edit it._\n\n";
-  content += `Below is additional information about the web feature${features.length > 1 ? "s" : ""} (from the [web-features project](https://github.com/web-platform-dx/web-features/)) which ${features.length > 1 ? "are" : "is"} referenced in your proposal.`;
+  content += `Below is additional information about the web feature${augmentedFeatures.length > 1 ? "s" : ""} (from the [web-features project](https://github.com/web-platform-dx/web-features/)) which ${augmentedFeatures.length > 1 ? "are" : "is"} referenced in your proposal.`;
   content += `This information might help motivate your focus area proposal.\n\n`;
 
-  for (const feature of features) {
-    const featureData = await getFeatureAugmentedData(feature);
-    const featureContent = getMarkdownContentForFeature(featureData);
+  for (const feature of augmentedFeatures) {
+    const featureContent = getMarkdownContentForFeature(feature);
 
     if (features.length > 1) {
       content += `<details>\n`;
-      content += `<summary>${escapedFeatureName(feature)}</summary>\n\n`;
+      content += `<summary>${escapeFeatureName(feature)}</summary>\n\n`;
       content += featureContent;
       content += `</details>\n\n`;
     } else {
