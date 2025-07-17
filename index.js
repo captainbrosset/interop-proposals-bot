@@ -236,7 +236,7 @@ async function main() {
 
   let content = "_This comment was automatically generated based on the information you provided. Please don't edit it._\n\n";
   content += `Below is additional information about the web feature${features.length > 1 ? "s" : ""} (from the [web-features project](https://github.com/web-platform-dx/web-features/)) which ${features.length > 1 ? "are" : "is"} referenced in your proposal.`;
-  content += `This information about the feature might help motivate your focus area proposal.\n\n`;
+  content += `This information might help motivate your focus area proposal.\n\n`;
 
   for (const feature of features) {
     const featureData = await getFeatureAugmentedData(feature);
