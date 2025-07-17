@@ -171,10 +171,8 @@ function printWPTLink(feature) {
 }
 
 // Generate the markdown content for the given feature.
-function prepareComment(feature) {
-  let str = `The feature [${feature.name}](https://web-platform-dx.github.io/web-features-explorer/features/${feature.id}/) (from the [web-features project](https://github.com/web-platform-dx/web-features/)) was identified from the specification URLs you provided in the first comment.\n\n`;
-  str += `Below is more information about the feature, which might help motivate your focus area proposal.\n\n`;
-
+function getMarkdownContentForFeature(feature) {
+  let str = `### Feature **${feature.name}**\n\n`;
   str += `* **ID:** ${feature.id}\n`;
   str += `* **Name:** ${feature.name}\n`;
   str += `* **Description:** ${feature.description_html}\n`;
@@ -185,10 +183,7 @@ function prepareComment(feature) {
   str += printSurveys(feature);
   str += printPreviousInterops(feature);
   str += printWPTLink(feature);
-  str += `\nFor more information, see the [web-features explorer](https://web-platform-dx.github.io/web-features-explorer/features/${feature.id}/).`;
-
-  // Add the hidden comment to find this comment again later.
-  str += `\n${HIDDEN_COMMENT_IN_ISSUE}`;
+  str += `* **More information:** See the [web-features explorer](https://web-platform-dx.github.io/web-features-explorer/features/${feature.id}/).\n\n`;
 
   return str;
 }
@@ -239,15 +234,26 @@ async function main() {
   console.log(`Found ${features.length} matching feature(s) based on specification URLs:`);
   console.log(features.map(f => `- ${f.id}`).join("\n"));
 
-  // It's unlikely that multiple features would be found. Default to the first one if so.
-  if (features.length > 1) {
-    console.log("Multiple features found. Only the first one will be processed.");
+  let content = "_This comment was automatically generated based on the information you provided. Please don't edit it._\n\n";
+  content += `Below is additional information about the web feature${features.length > 1 ? "s" : ""} (from the [web-features project](https://github.com/web-platform-dx/web-features/)) which ${features.length > 1 ? "are" : "is"} referenced in your proposal.`;
+  content += `This information about the feature might help motivate your focus area proposal.\n\n`;
+
+  for (const feature of features) {
+    const featureData = await getFeatureAugmentedData(feature);
+    const featureContent = getMarkdownContentForFeature(featureData);
+
+    if (features.length > 1) {
+      content += `<details>\n`;
+      content += `<summary>${feature.name} (${feature.id})</summary>\n\n`;
+      content += featureContent;
+      content += `</details>\n\n`;
+    } else {
+      content += featureContent;
+    }
   }
 
-  const feature = features[0];
-
-  const featureData = await getFeatureAugmentedData(feature);
-  const markdown = prepareComment(featureData);
+  // Add the hidden comment to find this comment again later.
+  content += `\n${HIDDEN_COMMENT_IN_ISSUE}`;
 
   await postOrUpdateComment(issue.number, markdown);
 }
