@@ -23,6 +23,11 @@ const argv = yargs(process.argv)
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
+function escapedFeatureName(feature) {
+  // Escape the feature name for use in HTML.
+  return feature.name.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 async function getReferencedIssue() {
   const response = await octokit.request(`GET /repos/${argv.repo}/issues/${argv.number}`,);
   return response.data;
@@ -203,9 +208,9 @@ function printWPTLink(feature) {
 
 // Generate the markdown content for the given feature.
 function getMarkdownContentForFeature(feature) {
-  let str = `### Feature **${feature.name}**\n\n`;
+  let str = `### Feature **${escapedFeatureName(feature)}**\n\n`;
   str += `* **ID:** ${feature.id}\n`;
-  str += `* **Name:** ${feature.name}\n`;
+  str += `* **Name:** ${escapedFeatureName(feature)}\n`;
   str += `* **Description:** ${feature.description_html}\n`;
   str += `* **Baseline status:** ${printBaselineStatus(feature)}\n`;
   str += printDocs(feature);
@@ -275,7 +280,7 @@ async function main() {
 
     if (features.length > 1) {
       content += `<details>\n`;
-      content += `<summary>${feature.name} (${feature.id})</summary>\n\n`;
+      content += `<summary>${escapedFeatureName(feature)}</summary>\n\n`;
       content += featureContent;
       content += `</details>\n\n`;
     } else {
