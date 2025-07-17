@@ -2,7 +2,6 @@
   "name": "interop-proposals-bot",
   "type": "module",
   "devDependencies": {
-    "dotenv": "^17.0.0",
     "octokit": "^5.0.3",
     "web-features": "^2.40.2",
     "yargs": "^18.0.0"

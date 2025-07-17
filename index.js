@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { Octokit } from "octokit";
 import { features } from "web-features";
 import yargs from "yargs";
