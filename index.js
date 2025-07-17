@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Octokit, App } from "octokit";
+import { Octokit } from "octokit";
 import { features } from "web-features";
 import yargs from "yargs";
 
@@ -51,7 +51,13 @@ function extractSpecUrlsFromBody(body) {
     });
 }
 
-// Given a list of URLs, identify which web-features they match.
+// Extract the URLs from the issue body that point to the web-features-explorer.
+function extractExplorerUrlsFromBody(body) {
+  const urls = body.match(/https?:\/\/web-platform-dx.github.io\/web-features-explorer\/features\/[a-z0-9-]+/g) || [];
+  return urls.map(url => url.split("#")[0]); // Remove any anchors from the URLs.
+}
+
+// Given a list of likely spec URLs, identify which web-features they match.
 function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
   const matchingFeatures = [];
 
@@ -70,16 +76,41 @@ function identifyFeaturesFromSpecUrls(specUrlsInIssue) {
   return matchingFeatures;
 }
 
+// Given a list of likely explorer URLs, identify which web-features they match.
+function identifyFeaturesFromExplorerUrls(explorerUrlsInIssue) {
+  const matchingFeatures = [];
+
+  for (const url of explorerUrlsInIssue) {
+    // Extract the feature ID from the URL.
+    const match = url.match(/features\/([a-z0-9-]+)/);
+    if (match && match[1]) {
+      const featureId = match[1];
+      const feature = features[featureId];
+      if (feature) {
+        feature.id = featureId; // Add the ID to the feature object.
+        matchingFeatures.push(feature);
+      }
+    }
+  }
+
+  return matchingFeatures;
+}
+
 // Given a GitHub issue, find the web-features that are referenced in the issue body.
 // For now, we only look for URLs that match the web-features specifications.
 // TODO: find web-features IDs, but also try to match on other URLs too (WPT labels, MDN URLs, vendor positions, etc.)
 function findFeaturesInIssue(issue) {
-  const urlsInBodyOfIssue = extractSpecUrlsFromBody(issue.body);
-  console.log(`Found ${urlsInBodyOfIssue.length} URL(s) in issue body, which may be specification(s):`);
-  console.log(urlsInBodyOfIssue.map(s => `- ${s[0]}`).join("\n"));
+  const specUrls = extractSpecUrlsFromBody(issue.body);
+  console.log(`Found ${specUrls.length} likely spec URL(s) in issue body:`);
+  console.log(specUrls.map(s => `- ${s[0]}`).join("\n"));
+  const featuresBasedOnSpecUrls = identifyFeaturesFromSpecUrls(specUrls);
 
-  const features = identifyFeaturesFromSpecUrls(urlsInBodyOfIssue);
-  return features;
+  const explorerUrls = extractExplorerUrlsFromBody(issue.body);
+  console.log(`Found ${explorerUrls.length} explorer URL(s) in issue body:`);
+  console.log(explorerUrls.map(s => `- ${s}`).join("\n"));
+  const featuresBasedOnExplorerUrls = identifyFeaturesFromExplorerUrls(explorerUrls);
+
+  return [...featuresBasedOnSpecUrls, ...featuresBasedOnExplorerUrls];
 }
 
 // Given a feature id, retrieve the feature's data.
