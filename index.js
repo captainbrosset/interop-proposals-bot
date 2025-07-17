@@ -62,7 +62,7 @@ function gatherFeaturesFromSpecUrls(issueBody, gatheredFeatures) {
       const feature = features[id];
       const featureSpecs = Array.isArray(feature.spec) ? feature.spec : [feature.spec];
       if (featureSpecs.some(spec => spec === candidateUrl || spec === candidateUrlNoAnchor)) {
-        gatheredFeatures[id] = feature;
+        gatheredFeatures.add(id)
       }
     }
   }
@@ -81,7 +81,7 @@ function gatherFeaturesFromExplorerUrls(issueBody, gatheredFeatures) {
       const id = match[1];
       const feature = features[id];
       if (feature) {
-        gatheredFeatures[id] = feature;
+        gatheredFeatures.add(id);
       }
     }
   }
@@ -100,7 +100,7 @@ function gatherFeaturesFromWPTUrls(issueBody, gatheredFeatures) {
       const id = match[1];
       const feature = features[id];
       if (feature) {
-        gatheredFeatures[id] = feature;
+        gatheredFeatures.add(id);
       }
     }
   }
@@ -109,7 +109,7 @@ function gatherFeaturesFromWPTUrls(issueBody, gatheredFeatures) {
 // Given a GitHub issue, find the web-features that are referenced in the issue body.
 // For now, we only look for URLs that match the web-features specifications.
 function findFeaturesInIssue(issue) {
-  const features = {};
+  const features = new Set();
   
   gatherFeaturesFromSpecUrls(issue.body, features);
   gatherFeaturesFromExplorerUrls(issue.body, features);
@@ -119,27 +119,22 @@ function findFeaturesInIssue(issue) {
   // - MDN URLs
   // - vendor positions
   // - etc.
-  // Maybe investigate a weighted system to prioritize features based on the number of matches.
+  // Maybe investigate a weighting system to prioritize features based on the number of matches.
 
-  return [...Object.entries(features)].map(([id, feature]) => {
-    return {
-      id,
-      ...feature
-    };
-  });
+  return [...features];
 }
 
 // Given a feature id, retrieve the feature's data.
 // We use the web-features-explorer's JSON files to get the full data, which includes both
 // the data that comes from the web-features project and the additional data that the explorer augments it with.
-async function getFeatureAugmentedData(feature) {
-  console.log(`Getting data for feature ${feature.id}`);
+async function getFeatureData(id) {
+  console.log(`Getting data for feature ${id}`);
 
   try {
-    const response = await fetch(`https://web-platform-dx.github.io/web-features-explorer/features/${feature.id}.json`);
+    const response = await fetch(`https://web-platform-dx.github.io/web-features-explorer/features/${id}.json`);
     return await response.json();
   } catch (error) {
-    console.error(`Error fetching the feature data for ${feature.id}:`, error);
+    console.error(`Error fetching the feature data for ${id}:`, error);
     return null;
   }
 }
@@ -271,22 +266,22 @@ async function main() {
   const issue = await getReferencedIssue();
 
   console.log(`Processing issue #${issue.number}: "${issue.title}"`);
-  const features = findFeaturesInIssue(issue);
-  const augmentedFeatures = await Promise.all(features.map(feature => getFeatureAugmentedData(feature)));
+  const featureIds = findFeaturesInIssue(issue);
+  const features = await Promise.all(featureIds.map(id => getFeatureData(id)));
 
   if (features.length === 0) {
     console.log("Could not find any matching features the issue body.");
     return;
   }
 
-  console.log(`Found ${augmentedFeatures.length} matching feature(s):`);
-  console.log(augmentedFeatures.map(f => `- ${f.id}`).join("\n"));
+  console.log(`Found ${features.length} matching feature(s):`);
+  console.log(features.map(f => `- ${f.id}`).join("\n"));
 
   let content = "_This comment was automatically generated based on the information you provided. Please don't edit it._\n\n";
-  content += `Below is additional information about the web feature${augmentedFeatures.length > 1 ? "s" : ""} (from the [web-features project](https://github.com/web-platform-dx/web-features/)) which ${augmentedFeatures.length > 1 ? "are" : "is"} referenced in your proposal.`;
+  content += `Below is additional information about the web feature${features.length > 1 ? "s" : ""} (from the [web-features project](https://github.com/web-platform-dx/web-features/)) which ${features.length > 1 ? "are" : "is"} referenced in your proposal.`;
   content += `This information might help motivate your focus area proposal.\n\n`;
 
-  for (const feature of augmentedFeatures) {
+  for (const feature of features) {
     const featureContent = getMarkdownContentForFeature(feature);
 
     if (features.length > 1) {
